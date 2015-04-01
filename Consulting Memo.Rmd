@@ -1,16 +1,19 @@
 ---
 title: "Consulting Memo"
 author: "Carolyn Clayton"
-date: "Tuesday, January 20, 2015"
-output: html_document
+date: "Wednesday, February 25, 2015"
+output: pdf_document
+graphics: yes
 ---
-``` {r load_packages, include = FALSE}
-library(psych)
+``` {r packages, include=FALSE}
 library(ggplot2)
+library(psych)
+library(plyr)
 ```
-This is a sample consulting memo originally created to partially fulfill requirements for Consulting II at the University of Colorado Denver.  
 
-```{r echo = FALSE, results='hide'}
+```{r data, eval=TRUE, echo=FALSE, results='hide'}
+setwd(dir = "C:/Users/Carolyn/Dropbox/ASchool/! Consulting II/Homework 6")
+
 ## Inputting the data
 
 Alfuzosin <- c(1, 1, 2, 2, 3, 1, 0, 3, 3, 2, 5, 2, 1, 3, 2, 1, 1, 2, 1, 2, 2, 2, 2, 1, 1, 5, 1, 2, 3, 1, 2, 5, 1, 5, 3, 3, 3, 2, 5, 2, 3, 4, 3, 4, 5, 3, 4, 3, 2, 3, 5, 2, 2, 3)
@@ -28,46 +31,73 @@ Drug <- factor(Drug,
                levels = c(0, 1), 
                labels = c("Alfuzosin", "AfterAlfuzosin"))
 Urination <- c(Alfuzosin, AfterAlfuzosin)
-UrinationData <- data.frame(Urination, Drug)
-```
+Days <- 1:(length(Alfuzosin) + length(AfterAlfuzosin))
+UrinationData <- data.frame(Days, Urination, Drug)
 
-Dear Sir:
+# Create fortnightly blocks of the data
+fortnight <- c(1,2,3,4,5,6,7)
+fortnight <- rep(fortnight, each=14, length.out = 92)
+UrinationData <- cbind(UrinationData, fortnight)  # Add fortnight to the dataframe.
 
-I have performed a two-sample t-test analysis on your data. Below you will find a boxplot of nightly urinations by drug status. 
+# Compute means by each fortnight.
+Means <- by(UrinationData$Urination, UrinationData$fortnight, mean)
+Means <- rep(Means, each=14, length.out=92)  # Create a vector of the means so there's one data point for each row in the dataframe.
+UrinationData <- cbind(UrinationData, Means)  # Add Means to the dataframe
 
-```{r fig.width = 5, fig.height = 5, fig.align = "center", echo = FALSE, results = 'hide'}
-ggplot(UrinationData, aes(x = Drug, y = Urination, fill = Drug)) +
-  geom_boxplot(alpha = 0.5) + 
-  stat_summary(fun.y = mean, geom = "point", shape = 5) +
-  guides(fill = FALSE) +
-  ggtitle("Boxplot of Nightly Urinations by Drug Status")
-dev.off() 
-```
-  
-```{r echo = FALSE, results = 'hide'}
-options(digits = 3)
 # Descriptives
 descriptives <- describeBy(UrinationData$Urination, group = Drug)
 
+```
+
+```{r tests, eval=TRUE, echo=FALSE, results='hide'}
 # Tests
 
-f.test <- var.test(UrinationData$Urination ~ UrinationData$Drug)
-t.test <- t.test(UrinationData$Urination ~ UrinationData$Drug, alternative = "two.sided", paired = F, conf.level = 0.95, var.equal = FALSE)
+ftest <- var.test(UrinationData$Urination ~ UrinationData$Drug)
+ttest <- t.test(UrinationData$Urination ~ UrinationData$Drug, alternative = "two.sided", paired = F, conf.level = 0.95, var.equal = FALSE)
 
+# Performing nonparametric tests just in case data are not normal. 
+wilcoxtest <- wilcox.test(UrinationData$Urination ~ UrinationData$Drug)
+
+# Code to automatically input a < 0.001 if the p-value is less than 0.001, rather than inputting an = 0.001 or = 0.000 (depending on rounding)
 x <- 0
 p.value <- function(x) {
     if(x < 0.001) {
       x <- "< 0.001"
     } else {
-      x <- cat("= ", x, sep = "")
-  }
+      x <- paste("= ", round(x, digits=3), sep = "")
+    }
   return(x)
 }
-
 ```
-In the analysis of the data, an F test was run to compare the variances of the two groups. This was determined to be significant, F(`r f.test$parameter[1]`, `r f.test$parameter[2]`) = `r f.test$statistic`, p = `r f.test$p.value`, 95% CI[`r f.test$conf.int[1]`, `r f.test$conf.int[2]`]; therefore a t-test for unequal variances was conducted. The result of this t-test was that there is a significant difference in average nightly urinations between nights on Alfuzosin and off Alfuzosin (t(`r t.test$parameter`) = `r t.test$statistic`, p `r p.value(t.test$p.value)`, 95% CI[`r t.test$conf.int[1]`, `r t.test$conf.int[2]`]). The mean nightly urinations on Alfuzosin was `r descriptives$Alfuzosin$mean` (SD = `r descriptives$Alfuzosin$sd`), while the nightly urinations off Alfuzosin was `r descriptives$AfterAlfuzosin$mean` (SD = `r descriptives$AfterAlfuzosin$sd`). 
 
-Given these results, we would conclude that alfuzosin is efficacious; however, whether the reduction in night time urinations is sufficient to warrant the potential side effects is left up to your discretion.  
+Dear Sir:
+
+Below is a summary of nightly urinations on Alfuzosin and off Alfuzosin:
+
+```{r summary,results='asis',echo=FALSE}
+# Descriptives table
+knitr::kable(ddply(UrinationData, ~Drug, summarise, mean=round(mean(Urination), digits = 3),sd=round(sd(Urination), digits = 3)), caption = "Nightly Urinations On and Off Alfuzosin")
+```
+
+In the analysis of the data, an F test was run to compare the variances of the two groups. This was determined to be significant, F($`r ftest$parameter[1]`$, $`r ftest$parameter[2]`$) = $`r round(ftest$statistic, digits = 3)`$, p $`r p.value(ftest$p.value)`$, 95% CI($`r round(ftest$conf.int[1], digits = 3)`$, $`r round(ftest$conf.int[2], digits = 3)`$); therefore a t-test for unequal variances was conducted. The result of this t-test was that there is a significant difference in average nightly urinations between nights on Alfuzosin and off Alfuzosin, t($`r round(ttest$parameter, digits = 3)`$) = $`r round(ttest$statistic, digits = 3)`$, p $`r p.value(ttest$p.value)`$, 95% CI($`r round(ttest$conf.int[1], digits = 3)`$, $`r round(ttest$conf.int[2], digits = 3)`$). The mean nightly urinations on Alfuzosin was $`r round(descriptives$Alfuzosin$mean, digits = 3)`$ (SD = $`r round(descriptives$Alfuzosin$sd, digits = 3)`$), while the nightly urinations off Alfuzosin was $`r round(descriptives$AfterAlfuzosin$mean, digits = 3)`$ (SD = $`r round(descriptives$AfterAlfuzosin$sd, digits = 3)`$). 
+
+We have also plotted the nightly urinations over time, and have taken fortnightly means (as depicted in the graph below):
+
+```{r plot1, echo=FALSE, results='hide', fig.width = 4, fig.height = 3, fig.align = 'center', dev='pdf'}
+# Note: There was an issue with centering this in the PDF. Issue fixed by info contained on https://github.com/rstudio/rmarkdown/issues/325 . Added graphics: yes to YAML header.
+g <- ggplot(UrinationData, aes(x = Days, y = Urination))  # Specify the data
+g + geom_point(shape = 1, size = 2) + # Add data points
+  geom_segment(aes(x = seq_along(Days), y = Means, xend=(seq_along(Days) + 1), yend = Means)) +  # Create the mean lines.
+  geom_vline(xintercept = 54.5, size = 1) +  # Add vertical line
+  theme_bw(base_size = 10) +  # Change theme, font, and font size
+  labs(x = "Day (May-Aug 2006)") +  # Change x label
+  labs(y = "# void") +  # Change y label
+  annotate("text", x = 25, y = 9, label = "On Alfuzosin", size = 4) +  # Add On Alfuzosin annotation to plot
+  annotate("text", x = 75, y = 9, label = "Off Alfuzosin", size = 4) # Add On Alfuzosin annotation to plot 
+```
+\begin{center}Plot 1: Nightly Urinations with Fortnightly Means\end{center}
+  
+Given these results, we would conclude that alfuzosin may be efficacious for you; however, there was a reduction in nightly urinations immediately prior to switching to Alfuzosin. Whether the reduction in night time urinations on Alfuzosin is sufficient to warrant the potential side effects is left up to your discretion.    
 
 Warmly,  
 Carolyn
